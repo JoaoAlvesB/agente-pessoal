@@ -54,10 +54,14 @@ pip install -r requirements.txt
 Se estiver usando Git Bash (terminal `MINGW64` ou `UCRT64`), os comandos de ativação e os caminhos são diferentes dos do PowerShell. Na pasta do projeto, use:
 
 ```bash
+Mínimas configurações para rodar o agente especial 
+Instalar python mais recente ou compatível
+python --version
 py -3.12 -m venv .venv
 source .venv/Scripts/activate
 python --version
 python -m pip install -r requirements.txt
+python app.py
 ```
 
 Se `python` não for encontrado ou apontar para outra versão, invoque diretamente o Python do ambiente virtual:
