@@ -26,7 +26,8 @@ As respostas são faladas **frase por frase** enquanto o modelo ainda está gera
 |---|---|
 | `app.py` | Ponto de entrada. Escolhe modo voz ou texto. |
 | `conversa.py` | Lógica da conversa, comunicação com o Ollama (com streaming) e controle do fluxo. |
-| `voice.py` | Captura do microfone, transcrição (Whisper), síntese (Piper) e efeito robótico. |
+| `reconhecedor_voz.py` | Captura do microfone e transcrição de áudio com Whisper. |
+| `sintetizador_voz.py` | Síntese e reprodução de fala com Piper, incluindo os ajustes de pronúncia e o efeito robótico. |
 | `database.py` | Histórico das mensagens em SQLite. |
 | `requirements.txt` | Dependências Python. |
 
@@ -96,7 +97,7 @@ pt_BR-faber-medium.onnx
 pt_BR-faber-medium.onnx.json
 ```
 
-Coloque os dois na **mesma pasta do `voice.py`**. O `.json` precisa ter o mesmo nome do `.onnx`. Para usar outra voz, altere `VOZ_PIPER` em `voice.py`.
+Coloque os dois arquivos na pasta `Voices` do projeto. O `.json` precisa ter o mesmo nome do `.onnx`, seguido de `.json`. Para usar outra voz, altere `VOZ_PIPER` em `sintetizador_voz.py`.
 
 ### 4. Modelo do Whisper
 
@@ -128,15 +129,20 @@ Tudo é ajustado por constantes no início de cada classe.
 | `INSTRUCOES` | Prompt de sistema (personalidade e regras de resposta). |
 | `criar_dados` | Opções do Ollama: `num_ctx`, `num_predict`, `temperature`, `keep_alive`. |
 
-### `voice.py`
+### `reconhecedor_voz.py` (escuta)
+
+| Constante | O que faz |
+|---|---|
+| `MODELO_WHISPER` | Modelo Whisper: `base` (mais rápido) ou `small` (mais preciso). |
+| `LIMIAR_AUDIO` | Sensibilidade do microfone. Suba se captar ruído, baixe se não ouvir você. |
+| `LIMITE_SILENCIO` | Segundos de silêncio para considerar que você terminou de falar. |
+
+### `sintetizador_voz.py` (fala)
 
 | Constante | O que faz |
 |---|---|
 | `FALAR_RESPOSTA` | `True` fala a resposta; `False` mostra só em texto no terminal. |
 | `VOZ_PIPER` | Arquivo `.onnx` da voz. |
-| `MODELO_WHISPER` | `base` (mais rápido) ou `small` (mais preciso). |
-| `LIMIAR_AUDIO` | Sensibilidade do microfone. Suba se captar ruído, baixe se não ouvir você. |
-| `LIMITE_SILENCIO` | Segundos de silêncio para considerar que você terminou de falar. |
 | `CORRECOES_PRONUNCIA` | Dicionário para corrigir palavras que o Piper pronuncia mal. |
 | `EFEITO_ROBO` | Liga ou desliga o efeito robótico. |
 | `FATOR_TOM`, `FREQ_MODULACAO`, `MISTURA_ROBO`, `ATRASO_METALICO_MS`, `INTENSIDADE_ECO`, `BITS` | Ajustam o timbre do efeito (veja os comentários no código). |
@@ -187,8 +193,8 @@ py -3.12 -m venv .venv
 
 Depois, ative o ambiente conforme o terminal utilizado e confirme com `python --version` que ele mostra Python 3.12 antes de instalar os requisitos. No Git Bash, se necessário, instale usando `./.venv/Scripts/python.exe -m pip install -r requirements.txt`. Não instale os requisitos com um `pip` global ou de outro ambiente virtual.
 
-**`ImportError: cannot import name 'Voice' from 'voice'`**
-O `voice.py` da pasta está vazio ou incompleto. Substitua o arquivo, apague a pasta `__pycache__` e teste com `python -c "from voice import Voice; print('ok')"`.
+**`ModuleNotFoundError` ao importar os módulos de voz**
+Confirme que está executando os comandos na pasta do projeto e que os arquivos `reconhecedor_voz.py` e `sintetizador_voz.py` estão presentes. O projeto separa a escuta (Whisper) da fala (Piper); imports antigos como `from voice import Voice` devem ser substituídos pelos módulos novos.
 
 **O Mike responde em inglês, "pensando em voz alta"**
 O modelo é uma versão que só raciocina. Use a tag `qwen3:4b-instruct-2507-q4_K_M` e **apague o histórico** (veja abaixo), porque o raciocínio antigo fica salvo e é imitado pelo modelo.
@@ -197,16 +203,16 @@ O modelo é uma versão que só raciocina. Use a tag `qwen3:4b-instruct-2507-q4_
 Apague `mensagens.db`, `mensagens.db-wal` e `mensagens.db-shm`. Eles são recriados vazios na próxima execução.
 
 **"Não detectei fala" mesmo falando**
-Baixe `LIMIAR_AUDIO` (por exemplo, para `0.015`). Confira também o microfone padrão do sistema.
+Baixe `LIMIAR_AUDIO` em `reconhecedor_voz.py` (por exemplo, para `0.015`). Confira também o microfone padrão do sistema.
 
 **O Mike capta ruído e responde coisas que você não disse**
-Suba `LIMIAR_AUDIO` (por exemplo, para `0.02` ou mais).
+Suba `LIMIAR_AUDIO` em `reconhecedor_voz.py` (por exemplo, para `0.02` ou mais).
 
 **Não sai voz**
-Verifique `FALAR_RESPOSTA = True`, se o log mostra "Sintetizador de voz local (Piper) inicializado com sucesso" e o dispositivo de saída de áudio do sistema.
+Verifique `FALAR_RESPOSTA = True` em `sintetizador_voz.py`, se o log mostra "Sintetizador de voz local (Piper) inicializado com sucesso" e o dispositivo de saída de áudio do sistema.
 
 **"Arquivo de voz não encontrado"**
-O nome em `VOZ_PIPER` não bate com o arquivo na pasta, ou o `.onnx` e o `.onnx.json` estão em pastas diferentes.
+O caminho em `VOZ_PIPER` de `sintetizador_voz.py` não bate com o arquivo, ou o `.onnx` e o `.onnx.json` estão em pastas diferentes.
 
 **Erro de conexão com o Ollama**
 Confirme que o Ollama está rodando e responde em `http://localhost:11434`. Use `ollama list` para ver os modelos instalados.
@@ -214,8 +220,8 @@ Confirme que o Ollama está rodando e responde em `http://localhost:11434`. Use 
 **Pronúncia errada de alguma palavra (ex.: "problema" soando como "poblema")**
 Primeiro teste com `EFEITO_ROBO = False` para saber se o efeito é o culpado. Se a voz em si errar, use `CORRECOES_PRONUNCIA` ou troque a voz do Piper.
 
-**`synthesize() takes 2 positional arguments...`**
-O `voice.py` já lida com as duas APIs do Piper (versões antigas e a partir da 1.3). Se aparecer algo parecido, informe a versão: `pip show piper-tts`.
+**Erro de argumentos em `synthesize()`**
+O `sintetizador_voz.py` lida com as APIs antigas do Piper e com a API a partir da versão 1.3. Se aparecer um erro de argumentos, informe a versão instalada: `pip show piper-tts`.
 
 ## Limitações conhecidas
 

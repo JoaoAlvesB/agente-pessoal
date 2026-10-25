@@ -24,9 +24,10 @@ class Conversa:
     # Fim de frase: pontuação seguida de espaço ou quebra de linha
     PADRAO_FIM_FRASE = re.compile(r"[.!?:\n]\s")
 
-    def __init__(self, db, voice):
+    def __init__(self, db, reconhecedor, sintetizador):
         self.db = db
-        self.voice = voice
+        self.reconhecedor = reconhecedor
+        self.sintetizador = sintetizador
 
     # ------------------------------------------------------------------
     # Modo texto
@@ -63,10 +64,10 @@ class Conversa:
         if not self.verificar_modelo():
             return
 
-        self.voice.criar_sintetizador()
-        self.voice.iniciar_modelo_voz()
+        self.sintetizador.criar_sintetizador()
+        self.reconhecedor.iniciar_modelo_voz()
 
-        if self.voice.modelo_voz is None:
+        if self.reconhecedor.modelo_voz is None:
             logging.error("Reconhecimento de voz indisponível. Use o modo texto: python app.py --texto")
             return
 
@@ -76,7 +77,7 @@ class Conversa:
             while True:
                 logging.info("\nMike: Pode falar. Estou ouvindo.")
                 try:
-                    audio = self.voice.capturar_audio()
+                    audio = self.reconhecedor.capturar_audio()
                 except Exception as e:
                     logging.error(f"Erro ao acessar o microfone: {e}")
                     break
@@ -86,7 +87,7 @@ class Conversa:
                     continue
 
                 try:
-                    mensagem = self.voice.transcrever_audio(audio)
+                    mensagem = self.reconhecedor.transcrever_audio(audio)
                 except Exception as e:
                     logging.error(f"Erro ao transcrever o áudio localmente: {e}")
                     continue
@@ -109,7 +110,7 @@ class Conversa:
         except KeyboardInterrupt:
             logging.info("\nMike encerrado.")
         finally:
-            self.voice.encerrar_sintetizador()
+            self.sintetizador.encerrar_sintetizador()
 
     def verificar_modelo(self):
         """
@@ -188,12 +189,12 @@ class Conversa:
 
             frases, buffer = self.extrair_frases(buffer)
             for frase in frases:
-                self.voice.falar_resposta(frase)
+                self.sintetizador.falar_resposta(frase)
 
         # Sobra do final (última frase, que costuma não ter espaço depois)
         resto = self.limpar_think(buffer).strip()
         if resto:
-            self.voice.falar_resposta(resto)
+            self.sintetizador.falar_resposta(resto)
 
         completo = self.limpar_think(completo).strip()
 
@@ -250,12 +251,13 @@ class Conversa:
             "model": self.MODEL,
             "messages": mensagens,
             "stream": stream,
+            "keep_alive": "60m",
             "think": False,
             "keep_alive": "30m",
             "options": {
                 "temperature": 0.3,
-                "num_predict": 150,
-                "num_ctx": 4096
+                "num_predict": 40,
+                "num_ctx": 2048
             }
         }
 

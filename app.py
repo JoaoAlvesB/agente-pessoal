@@ -2,7 +2,8 @@ import argparse
 import logging
 
 from database import Database
-from voice import Voice
+from reconhecedor_voz import ReconhecedorVoz
+from sintetizador_voz import SintetizadorVoz
 from conversa import Conversa
 
 def main():
@@ -22,8 +23,9 @@ def main():
 
     # Inicializar o sistema
     db = Database()
-    voz = Voice()
-    conversa = Conversa(db, voz)
+    reconhecedor = ReconhecedorVoz()
+    sintetizador = SintetizadorVoz()
+    conversa = Conversa(db, reconhecedor, sintetizador)
 
     if argumentos.texto:
         conversa.iniciar_conversa_por_texto()
