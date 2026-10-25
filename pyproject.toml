@@ -1,0 +1,19 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "agente-pessoal"
+version = "0.1.0"
+description = "Assistente pessoal de conversa por voz, executado localmente."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy",
+    "sounddevice",
+    "pywhispercpp",
+    "piper-tts",
+]
+
+[tool.setuptools]
+py-modules = ["app", "conversa", "database", "voice"]

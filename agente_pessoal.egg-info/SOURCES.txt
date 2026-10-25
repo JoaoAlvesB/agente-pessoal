@@ -1,0 +1,11 @@
+README.md
+app.py
+conversa.py
+database.py
+pyproject.toml
+voice.py
+agente_pessoal.egg-info/PKG-INFO
+agente_pessoal.egg-info/SOURCES.txt
+agente_pessoal.egg-info/dependency_links.txt
+agente_pessoal.egg-info/requires.txt
+agente_pessoal.egg-info/top_level.txt

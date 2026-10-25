@@ -28,7 +28,8 @@ As respostas são faladas **frase por frase** enquanto o modelo ainda está gera
 | `conversa.py` | Lógica da conversa, comunicação com o Ollama (com streaming) e controle do fluxo. |
 | `voice.py` | Captura do microfone, transcrição (Whisper), síntese (Piper) e efeito robótico. |
 | `database.py` | Histórico das mensagens em SQLite. |
-| `requirements.txt` | Dependências Python. |
+| `pyproject.toml` | Metadados, dependências e configuração do pacote Python. |
+| `requirements.txt` | Instala o projeto e suas dependências do `pyproject.toml`. |
 
 ## Requisitos
 
