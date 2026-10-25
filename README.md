@@ -48,6 +48,30 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+#### Git Bash no Windows
+
+Se estiver usando Git Bash (terminal `MINGW64` ou `UCRT64`), os comandos de ativação e os caminhos são diferentes dos do PowerShell. Na pasta do projeto, use:
+
+```bash
+py -3.12 -m venv .venv
+source .venv/Scripts/activate
+python --version
+python -m pip install -r requirements.txt
+```
+
+Se `python` não for encontrado ou apontar para outra versão, invoque diretamente o Python do ambiente virtual:
+
+```bash
+./.venv/Scripts/python.exe --version
+./.venv/Scripts/python.exe -m pip install -r requirements.txt
+```
+
+Confira se a versão mostrada é Python 3.10 ou superior. Para executar o programa sem depender da ativação do ambiente, use:
+
+```bash
+./.venv/Scripts/python.exe app.py --texto
+```
+
 ### 2. Modelo de linguagem (Ollama)
 
 Com o Ollama instalado e rodando:
@@ -118,6 +142,50 @@ Tudo é ajustado por constantes no início de cada classe.
 | `FATOR_TOM`, `FREQ_MODULACAO`, `MISTURA_ROBO`, `ATRASO_METALICO_MS`, `INTENSIDADE_ECO`, `BITS` | Ajustam o timbre do efeito (veja os comentários no código). |
 
 ## Solução de problemas
+
+**`pip install requirements.txt` diz que não encontrou o pacote**
+Use `-r` para instalar os pacotes listados no arquivo:
+
+```bash
+python -m pip install -r requirements.txt
+```
+
+**`pip` mostra `no such option: -m`**
+O `-m` é uma opção do Python, não do `pip`. Use `python -m pip ...`, ou o caminho completo do Python do ambiente virtual:
+
+```bash
+./.venv/Scripts/python.exe -m pip install -r requirements.txt
+```
+
+Não use `pip -m install ...` nem `pip install -m ...`.
+
+**`python` não é encontrado no Windows ou abre a Microsoft Store**
+O terminal pode não estar encontrando o Python instalado ou o ambiente virtual pode não estar ativado. No Git Bash, primeiro entre na pasta do projeto e ative o ambiente:
+
+```bash
+cd ~/desktop/GitHub/agente-pessoal
+source .venv/Scripts/activate
+```
+
+Se ainda assim `python` não funcionar, use `./.venv/Scripts/python.exe` no lugar de `python`. No PowerShell, o comando de ativação é `.venv\Scripts\Activate.ps1`. Se a pasta `.venv` ainda não existir, crie o ambiente com `python -m venv .venv` usando uma instalação do Python disponível.
+
+**`pip` informa `ResolutionImpossible`, não encontra `onnxruntime` ou menciona `cp315`**
+`cp315` indica que o `pip` está usando Python 3.15. O `piper-tts` depende do `onnxruntime`, que pode não disponibilizar um pacote compatível com essa versão. Use uma versão estável do Python compatível com as dependências (por exemplo, Python 3.12), crie novamente o ambiente virtual com essa versão e instale as dependências dentro dele:
+
+```bash
+py -3.12 -m venv .venv
+source .venv/Scripts/activate
+python --version
+python -m pip install -r requirements.txt
+```
+
+Se o comando `py` não for encontrado, instale o Python 3.12 e marque a opção para instalar o Python Launcher; alternativamente, crie o ambiente usando o caminho completo do executável instalado. Se `.venv` já existir com outra versão do Python, desative o ambiente, remova somente a pasta `.venv` deste projeto e crie-a novamente:
+
+```powershell
+py -3.12 -m venv .venv
+```
+
+Depois, ative o ambiente conforme o terminal utilizado e confirme com `python --version` que ele mostra Python 3.12 antes de instalar os requisitos. No Git Bash, se necessário, instale usando `./.venv/Scripts/python.exe -m pip install -r requirements.txt`. Não instale os requisitos com um `pip` global ou de outro ambiente virtual.
 
 **`ImportError: cannot import name 'Voice' from 'voice'`**
 O `voice.py` da pasta está vazio ou incompleto. Substitua o arquivo, apague a pasta `__pycache__` e teste com `python -c "from voice import Voice; print('ok')"`.
