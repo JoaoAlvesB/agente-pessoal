@@ -4,6 +4,8 @@ import urllib.request
 import urllib.error
 import logging
 
+from acoes_sistema import AcoesSistema
+
 
 class Conversa:
     URL = "http://localhost:11434/api/chat"
@@ -24,17 +26,21 @@ class Conversa:
     # Fim de frase: pontuação seguida de espaço ou quebra de linha
     PADRAO_FIM_FRASE = re.compile(r"[.!?:\n]\s")
 
-    def __init__(self, db, reconhecedor, sintetizador):
+    def __init__(self, db, reconhecedor, sintetizador, acoes_sistema=None):
         self.db = db
         self.reconhecedor = reconhecedor
         self.sintetizador = sintetizador
+        self.acoes_sistema = acoes_sistema or AcoesSistema()
 
     # ------------------------------------------------------------------
     # Modo texto
     # ------------------------------------------------------------------
     def iniciar_conversa_por_texto(self):
         if not self.verificar_modelo():
-            return
+            logging.warning(
+                "Ollama indisponível. Comandos do sistema continuarão ativos; "
+                "respostas de conversa dependem do Ollama."
+            )
 
         logging.info("Mike iniciado. Digite 'sair' para encerrar.")
         while True:
@@ -62,7 +68,10 @@ class Conversa:
     # ------------------------------------------------------------------
     def iniciar_conversa_por_voz(self):
         if not self.verificar_modelo():
-            return
+            logging.warning(
+                "Ollama indisponível. Comandos do sistema continuarão ativos; "
+                "respostas de conversa dependem do Ollama."
+            )
 
         self.sintetizador.criar_sintetizador()
         self.reconhecedor.iniciar_modelo_voz()
@@ -155,6 +164,10 @@ class Conversa:
         ]
 
     def conversar(self, mensagem):
+        resposta_acao = self.acoes_sistema.processar(mensagem)
+        if resposta_acao is not None:
+            return resposta_acao
+
         mensagens = self.montar_mensagens(mensagem)
 
         try:
@@ -178,6 +191,11 @@ class Conversa:
         Recebe a resposta do modelo aos poucos e fala cada frase
         assim que ela termina, sem esperar a resposta inteira.
         """
+        resposta_acao = self.acoes_sistema.processar(mensagem)
+        if resposta_acao is not None:
+            self.sintetizador.falar_resposta(resposta_acao)
+            return resposta_acao
+
         mensagens = self.montar_mensagens(mensagem)
 
         completo = ""

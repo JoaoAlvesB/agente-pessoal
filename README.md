@@ -26,6 +26,7 @@ As respostas são faladas **frase por frase** enquanto o modelo ainda está gera
 |---|---|
 | `app.py` | Ponto de entrada. Escolhe modo voz ou texto. |
 | `conversa.py` | Lógica da conversa, comunicação com o Ollama (com streaming) e controle do fluxo. |
+| `acoes_sistema.py` | Interpreta comandos locais permitidos para abrir aplicativos e criar anotações. |
 | `reconhecedor_voz.py` | Captura do microfone e transcrição de áudio com Whisper. |
 | `sintetizador_voz.py` | Síntese e reprodução de fala com Piper, incluindo os ajustes de pronúncia e o efeito robótico. |
 | `database.py` | Histórico das mensagens em SQLite. |
@@ -115,6 +116,10 @@ python app.py --texto    # modo texto (não usa microfone nem alto-falante)
 ```
 
 - No modo voz, fale quando aparecer "Pode falar. Estou ouvindo."
+- Para abrir um aplicativo, diga "abra o Spotify", "abra o Chrome" ou o nome do aplicativo disponível no Menu Iniciar.
+- Para criar uma anotação, diga "desejo anotar um texto" e depois dite o conteúdo; também é possível dizer "anote: [texto]" de uma vez.
+- As anotações ficam em `Documentos\Mike\Notas` e são abertas no Bloco de Notas.
+- Comandos locais continuam disponíveis sem o Ollama; respostas de conversa dependem do Ollama em execução.
 - Para encerrar: diga "sair", "encerrar" ou "parar", ou pressione `Ctrl+C`.
 - No modo texto, digite `sair`.
 
@@ -238,3 +243,5 @@ O `sintetizador_voz.py` lida com as APIs antigas do Piper e com a API a partir d
 ## Privacidade
 
 Áudio, transcrição, conversa e histórico ficam na sua máquina. O único acesso de rede é ao Ollama local (`localhost`) e ao download inicial dos modelos.
+
+Os comandos de sistema usam uma lista controlada de ações: o Mike abre atalhos do Menu Iniciar, o Notepad, o Spotify ou o Chrome, e salva texto como anotação. A fala não é executada como comando PowerShell, terminal ou código arbitrário.
