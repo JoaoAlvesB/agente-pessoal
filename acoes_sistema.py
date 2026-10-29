@@ -18,22 +18,14 @@ class AcoesSistema:
     }
 
     COMANDO_ABRIR = re.compile(
-        r"^(?:(?:por favor\s+)?(?:(?:eu\s+)?(?:quero|gostaria de|preciso|desejo)"
-        r"(?:\s+que)?(?:\s+voce)?|(?:voce\s+)?(?:pode|poderia|consegue)|voce)\s+|"
-        r"por favor\s+)?(?:por favor\s+)?"
-        r"(?:abra|abrir|abre|abrisse|inicie|iniciar|execute|executar|rode|rodar)"
-        r"\s+(?:(?:o|a)\s+)?(?:(?:aplicativo|app|programa)\s+)?(.+?)"
-        r"(?:\s+(?:por favor|para mim|pra mim|agora|no computador|no pc))*$"
+        r"(?:^|\s)(?:abra|abrir|abre|abrisse|inicie|iniciar|execute|executar|rode|rodar)"
+        r"\s+(?:(?:o|a)\s+)?(?:(?:aplicativo|app|programa)\s+)?(.+?)(?:\s*(?:por favor|pra mim|para mim|agora|no computador|no pc|[?!.])\s*)?$",
+        re.IGNORECASE,
     )
     COMANDO_NOTA = re.compile(
-        r"^(?:(?:(?:eu\s+)?(?:quero|desejo|preciso)"
-        r"(?:\s+que)?(?:\s+voce)?|(?:voce\s+)?(?:pode|poderia))\s+)?"
-        r"(?:por favor\s+)?(?:"
-        r"(?:fazer|faca|criar|crie)\s+(?:uma?\s+)?anotacao|"
-        r"(?:(?:abrir|abra|abre)\s+(?:o\s+)?(?:notepad|bloco de notas)\s+e\s+)?"
-        r"(?:anote|anotar|registre|registrar|salve|salvar|escreva|escrever))"
-        r"(?:\s+(?:(?:um|uma|o|a)\s+)?(?:texto|nota|anotacao))?"
-        r"(?:\s*(?::|,|-|sobre\b|dizendo\b|que diz\b)\s*)?(.*)$"
+        r"(?:anote|anotar|anotacao|anotação|registre|registrar|salve|salvar|escreva|escrever)"
+        r"\s*(?::|,|-|de|\bque\b|\bpara\b)?\s*(.*)$",
+        re.IGNORECASE,
     )
     CANCELAR_NOTA = {"cancelar", "cancela", "deixa", "esquece"}
 
@@ -60,7 +52,7 @@ class AcoesSistema:
 
     def processar(self, mensagem):
         texto = mensagem.strip()
-        normalizado, mapa_indices = self._normalizar_com_mapa(texto)
+        normalizado = self._normalizar(texto)
 
         if self.aguardando_nota:
             if normalizado in self.CANCELAR_NOTA:
@@ -68,21 +60,23 @@ class AcoesSistema:
                 return "Tudo bem, cancelei a anotação."
             return self._salvar_nota(texto)
 
-        comando_nota = self.COMANDO_NOTA.fullmatch(normalizado)
+        comando_nota = self.COMANDO_NOTA.search(texto)
         if comando_nota:
-            inicio_conteudo = comando_nota.start(1)
-            indice_original = mapa_indices[inicio_conteudo] if inicio_conteudo < len(mapa_indices) else len(texto)
-            conteudo = texto[indice_original:].strip(" \t\r\n:,-")
-            if not conteudo:
+            conteudo = comando_nota.group(1).strip(" \t\r\n:,-?!.")
+            if not conteudo or self._normalizar(conteudo) in {"um texto", "uma nota", "o texto", "uma anotacao", "um texto para mim"}:
                 self.aguardando_nota = True
                 return "O que você quer anotar? Diga o texto em uma única fala."
             return self._salvar_nota(conteudo)
 
-        comando_abrir = self.COMANDO_ABRIR.fullmatch(normalizado)
+        comando_abrir = self.COMANDO_ABRIR.search(texto)
         if not comando_abrir:
             return None
 
-        nome = comando_abrir.group(1).strip()
+        nome = comando_abrir.group(1).strip(" \t\r\n\"'`.,;:?!")
+        nome = re.sub(r"\s+(?:por favor|pra mim|para mim|agora|no computador|no pc)$", "", nome, flags=re.IGNORECASE)
+        if not nome:
+            return None
+
         destino = self._resolver_aplicativo(nome)
         if destino is None:
             return f"Não encontrei '{nome}' nos aplicativos instalados do Menu Iniciar."
