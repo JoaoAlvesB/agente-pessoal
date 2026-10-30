@@ -2,6 +2,7 @@ import importlib
 import logging
 import os
 import re
+from collections import deque
 from pathlib import Path
 
 import numpy as np
@@ -9,13 +10,14 @@ import sounddevice as sd
 from faster_whisper import WhisperModel
 
 class ReconhecedorVoz:
-    MODELO_WHISPER = "base"
+    MODELO_WHISPER = "small"
     DEVICE = "cuda"
     COMPUTE_TYPE = "float16"
 
     FREQUENCIA_AUDIO = 16_000
-    LIMIAR_SILENCIO = 0.5
+    LIMIAR_SILENCIO = 0.7
     LIMIAR_VOLUME_FALLBACK = 0.02
+    DURACAO_PRE_ROLAGEM = 0.3
 
     _RE_MARCACOES = re.compile(r"\[[^\]]*\]|\([^)]*\)")
     _RE_ESPACOS = re.compile(r"\s+")
@@ -100,9 +102,19 @@ class ReconhecedorVoz:
     def capturar_audio(self):
         logging.info("Mike: Estou ouvindo...")
         amostras = []
+        window_size = 512
+        blocos_anteriores = deque(
+            maxlen=max(
+                1,
+                round(
+                    self.DURACAO_PRE_ROLAGEM
+                    * self.FREQUENCIA_AUDIO
+                    / window_size
+                ),
+            )
+        )
         falando = False
         silencio_contador = 0
-        window_size = 512
 
         try:
             with sd.InputStream(
@@ -119,6 +131,8 @@ class ReconhecedorVoz:
                     is_speech = nivel > self.LIMIAR_VOLUME_FALLBACK
 
                     if is_speech:
+                        if not falando:
+                            amostras.extend(blocos_anteriores)
                         falando = True
                         silencio_contador = 0
                         amostras.append(audio_flat)
@@ -128,7 +142,7 @@ class ReconhecedorVoz:
                         if silencio_contador >= int(self.FREQUENCIA_AUDIO * self.LIMIAR_SILENCIO):
                             break
                     else:
-                        pass
+                        blocos_anteriores.append(audio_flat)
 
             return np.concatenate(amostras) if amostras else None
         except Exception as e:
@@ -171,9 +185,9 @@ class ReconhecedorVoz:
     def _transcrever_com_modelo(self, audio):
         segmentos, _ = self.modelo_voz.transcribe(
             audio,
-            beam_size=1,
+            beam_size=3,
             language="pt",
-            initial_prompt="Transcrição clara em português brasileiro, contendo perguntas e interrogações."
+            condition_on_previous_text=False,
         )
         texto = " ".join(segmento.text.strip() for segmento in segmentos)
         texto = self._RE_MARCACOES.sub(" ", texto)

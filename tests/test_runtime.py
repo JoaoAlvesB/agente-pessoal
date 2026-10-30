@@ -7,6 +7,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import Mock, call, patch
 
+import numpy as np
+
 from conversa import Conversa
 from reconhecedor_voz import ReconhecedorVoz
 
@@ -48,12 +50,31 @@ class ReconhecedorVozTests(unittest.TestCase):
         reconhecedor.iniciar_modelo_voz()
 
         whisper_model.assert_called_once_with(
-            "base",
+            ReconhecedorVoz.MODELO_WHISPER,
             device="cuda",
             compute_type="float16",
         )
         self.assertIs(reconhecedor.modelo_voz, modelo)
         self.assertEqual(reconhecedor.device, "cuda")
+
+    @patch("reconhecedor_voz.sd.InputStream")
+    def test_captura_preserva_audio_antes_do_inicio_detectado(self, input_stream):
+        blocos = [0.001] * 10 + [0.03] + [0.0] * 24
+        audio = iter(
+            (np.full((512, 1), valor, dtype=np.float32), False)
+            for valor in blocos
+        )
+        stream = Mock()
+        stream.read.side_effect = lambda _: next(audio)
+        input_stream.return_value.__enter__.return_value = stream
+        reconhecedor = ReconhecedorVoz()
+
+        resultado = reconhecedor.capturar_audio()
+
+        self.assertIsNotNone(resultado)
+        self.assertEqual(len(resultado), (9 + 1 + 22) * 512)
+        self.assertTrue(np.allclose(resultado[:512], 0.001))
+        self.assertTrue(np.allclose(resultado[9 * 512], 0.03))
 
     @patch("reconhecedor_voz.WhisperModel")
     def test_avisa_e_faz_fallback_para_cpu_se_gpu_falhar(self, whisper_model):
@@ -67,8 +88,8 @@ class ReconhecedorVozTests(unittest.TestCase):
         self.assertEqual(
             whisper_model.call_args_list,
             [
-                call("base", device="cuda", compute_type="float16"),
-                call("base", device="cpu", compute_type="int8"),
+                call(ReconhecedorVoz.MODELO_WHISPER, device="cuda", compute_type="float16"),
+                call(ReconhecedorVoz.MODELO_WHISPER, device="cpu", compute_type="int8"),
             ],
         )
         self.assertIs(reconhecedor.modelo_voz, modelo_cpu)
@@ -106,12 +127,29 @@ class ReconhecedorVozTests(unittest.TestCase):
 
         self.assertEqual(texto, "Olá Mike.")
         whisper_model.assert_called_once_with(
-            "base",
+            ReconhecedorVoz.MODELO_WHISPER,
             device="cpu",
             compute_type="int8",
         )
         self.assertEqual(reconhecedor.device, "cpu")
         self.assertIn("Tentando novamente na CPU", "\n".join(logs.output))
+
+    def test_transcricao_usa_beam_maior_sem_prompt_generico(self):
+        modelo = Mock()
+        modelo.transcribe.return_value = ([Mock(text=" A química orgânica.")], None)
+        reconhecedor = ReconhecedorVoz()
+        reconhecedor.modelo_voz = modelo
+        reconhecedor.device = "cuda"
+
+        texto = reconhecedor.transcrever_audio(np.zeros(16000, dtype=np.float32))
+
+        self.assertEqual(texto, "A química orgânica.")
+        modelo.transcribe.assert_called_once()
+        argumentos = modelo.transcribe.call_args.kwargs
+        self.assertEqual(argumentos["beam_size"], 3)
+        self.assertEqual(argumentos["language"], "pt")
+        self.assertFalse(argumentos["condition_on_previous_text"])
+        self.assertNotIn("initial_prompt", argumentos)
 
 
 class MemoriaConversaTests(unittest.TestCase):

@@ -12,7 +12,7 @@ Microfone -> Faster-Whisper (voz para texto) -> Ollama / Qwen3 Instruct (respost
 
 | Etapa | Tecnologia |
 |---|---|
-| Reconhecimento de voz | Faster-Whisper (`base` em GPU CUDA; fallback para CPU) |
+| Reconhecimento de voz | Faster-Whisper (`small` em GPU CUDA; fallback para CPU) |
 | Modelo de linguagem | [Ollama](https://ollama.com) com `qwen3:4b-instruct` |
 | Síntese de voz | [Piper](https://github.com/OHF-Voice/piper1-gpl) (`piper-tts`) |
 | Memória da conversa | SQLite (`mensagens.db`, criado automaticamente; últimos 12 registros no contexto) |
@@ -117,7 +117,7 @@ Coloque os dois arquivos na pasta `Voices` do projeto. O `.json` precisa ter o m
 
 ### 4. Modelo do Whisper
 
-Na primeira execução, o Faster-Whisper baixa automaticamente o modelo `base` (cerca de 150 MB). Ele tenta usar GPU CUDA em FP16; se não conseguir, registra um aviso e carrega o modelo na CPU em INT8. As bibliotecas cuBLAS e cuDNN necessárias para CUDA são instaladas junto com os requisitos.
+Na primeira execução, o Faster-Whisper baixa automaticamente o modelo `small` (cerca de 480 MB). Ele tenta usar GPU CUDA em FP16; se não conseguir, registra um aviso e carrega o modelo na CPU em INT8. As bibliotecas cuBLAS e cuDNN necessárias para CUDA são instaladas junto com os requisitos.
 
 ## Uso
 
@@ -153,7 +153,7 @@ Tudo é ajustado por constantes no início de cada classe.
 
 | Constante | O que faz |
 |---|---|
-| `MODELO_WHISPER` | Modelo Whisper; `base` prioriza rapidez. |
+| `MODELO_WHISPER` | Modelo Whisper; `small` melhora a precisão e usa a GPU CUDA. |
 | `LIMIAR_VOLUME_FALLBACK` | Sensibilidade do microfone. Suba se captar ruído, baixe se não ouvir você. |
 | `LIMITE_SILENCIO` | Segundos de silêncio para considerar que você terminou de falar. |
 
