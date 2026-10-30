@@ -51,10 +51,11 @@ class Database:
         ]
 
         with closing(sqlite3.connect(self.CAMINHO_BANCO)) as conexao:
-            conexao.executemany(
-                """
-                INSERT INTO historico (usuario, mensagem, timestamp)
-                VALUES (?, ?, ?)
-                """,
-                registros
-            )
+            with conexao:
+                conexao.executemany(
+                    """
+                    INSERT INTO historico (usuario, mensagem, timestamp)
+                    VALUES (?, ?, ?)
+                    """,
+                    registros
+                )
