@@ -1,4 +1,7 @@
+# Dependências do Agente Pessoal Mike - Régua Elite Offline
 numpy
 sounddevice
-pywhispercpp
+faster-whisper
+nvidia-cublas-cu12
+nvidia-cudnn-cu12==9.*
 piper-tts

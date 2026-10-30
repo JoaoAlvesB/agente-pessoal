@@ -5,17 +5,17 @@ Assistente de conversa em português do Brasil que roda inteiramente no seu comp
 ## Como funciona
 
 ```
-Microfone -> Whisper (voz para texto) -> Ollama / Qwen3 (resposta) -> Piper (texto para voz) -> Alto-falante
+Microfone -> Faster-Whisper (voz para texto) -> Ollama / Qwen3 Instruct (resposta) -> Piper (texto para voz) -> Alto-falante
                                               |
                                         SQLite (histórico)
 ```
 
 | Etapa | Tecnologia |
 |---|---|
-| Reconhecimento de voz | [pywhispercpp](https://github.com/absadiki/pywhispercpp) (Whisper `small`) |
-| Modelo de linguagem | [Ollama](https://ollama.com) com Qwen3-4B Instruct |
+| Reconhecimento de voz | Faster-Whisper (`base` em GPU CUDA; fallback para CPU) |
+| Modelo de linguagem | [Ollama](https://ollama.com) com `qwen3:4b-instruct` |
 | Síntese de voz | [Piper](https://github.com/OHF-Voice/piper1-gpl) (`piper-tts`) |
-| Histórico de conversa | SQLite (`mensagens.db`, criado automaticamente) |
+| Memória da conversa | SQLite (`mensagens.db`, criado automaticamente; últimos 12 registros no contexto) |
 | Áudio (entrada e saída) | `sounddevice` + `numpy` |
 
 As respostas são faladas **frase por frase** enquanto o modelo ainda está gerando o resto, o que reduz bastante a espera.
@@ -36,6 +36,7 @@ As respostas são faladas **frase por frase** enquanto o modelo ainda está gera
 
 - Python 3.10 ou superior
 - [Ollama](https://ollama.com/download) instalado e em execução
+- Driver NVIDIA instalado para usar CUDA no reconhecimento de voz; sem CUDA, o agente avisa e usa CPU
 - Microfone e alto-falantes funcionando
 - Cerca de 4 GB de RAM livres para o modelo de linguagem (mais o Whisper)
 - Testado no Windows (PowerShell). Em Linux e macOS deve funcionar, mas pode exigir a instalação do PortAudio para o `sounddevice`.
@@ -45,10 +46,18 @@ As respostas são faladas **frase por frase** enquanto o modelo ainda está gera
 ### 1. Ambiente virtual e dependências
 
 ```powershell
-python -m venv .venv
+py -3.12 -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+.\.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
+
+Para iniciar o agente, execute a partir desta pasta e use o Python do ambiente virtual explicitamente:
+
+```powershell
+.\.venv\Scripts\python.exe app.py
+```
+
+Isso evita que o Windows use outra instalação global de Python, mesmo que o prompt mostre `(.venv)`.
 
 #### Git Bash no Windows
 
@@ -62,7 +71,7 @@ py -3.12 -m venv .venv
 source .venv/Scripts/activate
 python --version
 python -m pip install -r requirements.txt
-python app.py
+./.venv/Scripts/python.exe app.py
 ```
 
 Se `python` não for encontrado ou apontar para outra versão, invoque diretamente o Python do ambiente virtual:
@@ -80,13 +89,15 @@ Confira se a versão mostrada é Python 3.10 ou superior. Para executar o progra
 
 ### 2. Modelo de linguagem (Ollama)
 
-Com o Ollama instalado e rodando:
+Com o Ollama instalado e rodando, baixe o modelo configurado no agente:
 
 ```
 ollama pull qwen3:4b-instruct
 ```
 
-> **Importante:** use a versão **Instruct**. A tag `qwen3:4b` pode ser uma versão que só funciona "pensando" e despeja o raciocínio (em inglês) na resposta. O `conversa.py` verifica na inicialização se o modelo existe e, se não achar, tenta usar outro `qwen3` "instruct" instalado.
+O Ollama seleciona a GPU automaticamente quando ela está disponível. Depois de uma resposta, confira `ollama ps`: a coluna `PROCESSOR` deve indicar uso de GPU. O agente também verifica essa informação e avisa se o Ollama estiver usando CPU. O modelo fica carregado por até 60 minutos para reduzir a latência das próximas mensagens.
+
+Use a tag `qwen3:4b-instruct`, não `qwen3:4b`, para evitar respostas com raciocínio interno.
 
 ### 3. Voz do Piper
 
@@ -106,13 +117,13 @@ Coloque os dois arquivos na pasta `Voices` do projeto. O `.json` precisa ter o m
 
 ### 4. Modelo do Whisper
 
-Nada a fazer: o `pywhispercpp` baixa o modelo `small` automaticamente na primeira execução (cerca de 480 MB).
+Na primeira execução, o Faster-Whisper baixa automaticamente o modelo `base` (cerca de 150 MB). Ele tenta usar GPU CUDA em FP16; se não conseguir, registra um aviso e carrega o modelo na CPU em INT8. As bibliotecas cuBLAS e cuDNN necessárias para CUDA são instaladas junto com os requisitos.
 
 ## Uso
 
 ```powershell
-python app.py            # modo voz
-python app.py --texto    # modo texto (não usa microfone nem alto-falante)
+.\.venv\Scripts\python.exe app.py            # modo voz
+.\.venv\Scripts\python.exe app.py --texto    # modo texto (não usa microfone nem alto-falante)
 ```
 
 - No modo voz, fale quando aparecer "Pode falar. Estou ouvindo."
@@ -134,7 +145,7 @@ Tudo é ajustado por constantes no início de cada classe.
 | Constante | O que faz |
 |---|---|
 | `MODEL` | Modelo do Ollama usado. |
-| `LIMITE_HISTORICO` | Quantas mensagens anteriores entram no contexto (padrão: 6). |
+| `LIMITE_HISTORICO` | Quantas mensagens anteriores entram no contexto (padrão: 12). |
 | `INSTRUCOES` | Prompt de sistema (personalidade e regras de resposta). |
 | `criar_dados` | Opções do Ollama: `num_ctx`, `num_predict`, `temperature`, `keep_alive`. |
 
@@ -142,8 +153,8 @@ Tudo é ajustado por constantes no início de cada classe.
 
 | Constante | O que faz |
 |---|---|
-| `MODELO_WHISPER` | Modelo Whisper: `base` (mais rápido) ou `small` (mais preciso). |
-| `LIMIAR_AUDIO` | Sensibilidade do microfone. Suba se captar ruído, baixe se não ouvir você. |
+| `MODELO_WHISPER` | Modelo Whisper; `base` prioriza rapidez. |
+| `LIMIAR_VOLUME_FALLBACK` | Sensibilidade do microfone. Suba se captar ruído, baixe se não ouvir você. |
 | `LIMITE_SILENCIO` | Segundos de silêncio para considerar que você terminou de falar. |
 
 ### `sintetizador_voz.py` (fala)
@@ -205,17 +216,17 @@ Depois, ative o ambiente conforme o terminal utilizado e confirme com `python --
 **`ModuleNotFoundError` ao importar os módulos de voz**
 Confirme que está executando os comandos na pasta do projeto e que os arquivos `reconhecedor_voz.py` e `sintetizador_voz.py` estão presentes. O projeto separa a escuta (Whisper) da fala (Piper); imports antigos como `from voice import Voice` devem ser substituídos pelos módulos novos.
 
-**O Mike responde em inglês, "pensando em voz alta"**
-O modelo é uma versão que só raciocina. Use a tag `qwen3:4b-instruct-2507-q4_K_M` e **apague o histórico** (veja abaixo), porque o raciocínio antigo fica salvo e é imitado pelo modelo.
+**O Mike responde em inglês ou com respostas estranhas**
+Confirme que `qwen3:4b-instruct` está instalado com `ollama list` e que o agente está usando esse modelo. A memória inclui as conversas anteriores; se o histórico estiver incorreto, faça uma cópia do banco antes de limpá-lo.
 
 **Respostas estranhas ou fora de contexto**
 Apague `mensagens.db`, `mensagens.db-wal` e `mensagens.db-shm`. Eles são recriados vazios na próxima execução.
 
 **"Não detectei fala" mesmo falando**
-Baixe `LIMIAR_AUDIO` em `reconhecedor_voz.py` (por exemplo, para `0.015`). Confira também o microfone padrão do sistema.
+Baixe `LIMIAR_VOLUME_FALLBACK` em `reconhecedor_voz.py` (por exemplo, para `0.015`). Confira também o microfone padrão do sistema.
 
 **O Mike capta ruído e responde coisas que você não disse**
-Suba `LIMIAR_AUDIO` em `reconhecedor_voz.py` (por exemplo, para `0.02` ou mais).
+Suba `LIMIAR_VOLUME_FALLBACK` em `reconhecedor_voz.py` (por exemplo, para `0.02` ou mais).
 
 **Não sai voz**
 Verifique `FALAR_RESPOSTA = True` em `sintetizador_voz.py`, se o log mostra "Sintetizador de voz local (Piper) inicializado com sucesso" e o dispositivo de saída de áudio do sistema.
@@ -225,6 +236,9 @@ O caminho em `VOZ_PIPER` de `sintetizador_voz.py` não bate com o arquivo, ou o 
 
 **Erro de conexão com o Ollama**
 Confirme que o Ollama está rodando e responde em `http://localhost:11434`. Use `ollama list` para ver os modelos instalados.
+
+**O Ollama está usando CPU**
+Depois de uma resposta, execute `ollama ps`. Se `PROCESSOR` mostrar `100% CPU`, o Ollama não alocou o modelo na GPU; reinicie/atualize o Ollama e confira novamente. O agente avisa quando detectar esse caso.
 
 **Pronúncia errada de alguma palavra (ex.: "problema" soando como "poblema")**
 Primeiro teste com `EFEITO_ROBO = False` para saber se o efeito é o culpado. Se a voz em si errar, use `CORRECOES_PRONUNCIA` ou troque a voz do Piper.
@@ -238,7 +252,7 @@ O `sintetizador_voz.py` lida com as APIs antigas do Piper e com a API a partir d
 - Não há detecção de interrupção: enquanto o Mike fala, o microfone fica desligado.
 - A divisão em frases é simples (pontuação seguida de espaço), então abreviações como "Sr. Silva" podem ser cortadas no meio.
 - O Whisper pode "alucinar" texto com ruído de fundo; por isso existem o limiar de áudio e o filtro de marcações como `[MÚSICA]`.
-- Respostas limitadas a 150 tokens por padrão (`num_predict`).
+- Respostas limitadas a 64 tokens por padrão (`num_predict`).
 
 ## Privacidade
 

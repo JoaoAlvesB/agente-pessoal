@@ -10,8 +10,12 @@ from acoes_sistema import AcoesSistema
 class Conversa:
     URL = "http://localhost:11434/api/chat"
     URL_MODELOS = "http://localhost:11434/api/tags"
+    URL_MODELOS_ATIVOS = "http://localhost:11434/api/ps"
     MODEL = "qwen3:4b-instruct"
-    LIMITE_HISTORICO = 6
+    LIMITE_HISTORICO = 12
+    RESPOSTA_ERRO_MODELO = (
+        "Não consegui obter uma resposta. Verifique se o Ollama está em execução."
+    )
     INSTRUCOES = """
     Seu nome é Mike. Você é o agente pessoal do usuário.
     Responda SEMPRE em português brasileiro, nunca em outro idioma.
@@ -31,6 +35,7 @@ class Conversa:
         self.reconhecedor = reconhecedor
         self.sintetizador = sintetizador
         self.acoes_sistema = acoes_sistema or AcoesSistema()
+        self._dispositivo_ollama = None
 
     # ------------------------------------------------------------------
     # Modo texto
@@ -61,7 +66,7 @@ class Conversa:
                 resposta = self.conversar(mensagem)
                 logging.info(f"\nMike: {resposta}")
             except Exception as e:
-                logging.error(f"Erro ao conversar ou salvar o histórico: {e}")
+                logging.error(f"Mike não conseguiu responder: {e}")
 
     # ------------------------------------------------------------------
     # Modo voz
@@ -115,7 +120,8 @@ class Conversa:
                     resposta = self.conversar_falando(mensagem)
                     logging.info(f"\nMike: {resposta}")
                 except Exception as e:
-                    logging.error(f"Erro ao conversar ou salvar o histórico: {e}")
+                    logging.error(f"Mike não conseguiu responder: {e}")
+                    self.sintetizador.falar_resposta(self.RESPOSTA_ERRO_MODELO)
         except KeyboardInterrupt:
             logging.info("\nMike encerrado.")
         finally:
@@ -166,6 +172,7 @@ class Conversa:
     def conversar(self, mensagem):
         resposta_acao = self.acoes_sistema.processar(mensagem)
         if resposta_acao is not None:
+            self.salvar_turno(mensagem, resposta_acao)
             return resposta_acao
 
         mensagens = self.montar_mensagens(mensagem)
@@ -176,10 +183,7 @@ class Conversa:
             logging.error(f"Erro ao consultar o modelo: {e}")
             raise
 
-        self.db.salvar_historico([
-            {"role": "user", "content": mensagem},
-            {"role": "assistant", "content": resposta_mike}
-        ])
+        self.salvar_turno(mensagem, resposta_mike)
 
         return resposta_mike
 
@@ -193,6 +197,7 @@ class Conversa:
         """
         resposta_acao = self.acoes_sistema.processar(mensagem)
         if resposta_acao is not None:
+            self.salvar_turno(mensagem, resposta_acao)
             self.sintetizador.falar_resposta(resposta_acao)
             return resposta_acao
 
@@ -215,14 +220,18 @@ class Conversa:
             self.sintetizador.falar_resposta(resto)
 
         completo = self.limpar_think(completo).strip()
+        if not completo:
+            raise RuntimeError("O Ollama retornou uma resposta vazia.")
 
-        if completo:
-            self.db.salvar_historico([
-                {"role": "user", "content": mensagem},
-                {"role": "assistant", "content": completo}
-            ])
+        self.salvar_turno(mensagem, completo)
 
         return completo
+
+    def salvar_turno(self, mensagem, resposta):
+        self.db.salvar_historico([
+            {"role": "user", "content": mensagem},
+            {"role": "assistant", "content": resposta},
+        ])
 
     def extrair_frases(self, buffer):
         """
@@ -271,10 +280,9 @@ class Conversa:
             "stream": stream,
             "keep_alive": "60m",
             "think": False,
-            "keep_alive": "30m",
             "options": {
                 "temperature": 0.3,
-                "num_predict": 40,
+                "num_predict": 64,
                 "num_ctx": 2048
             }
         }
@@ -297,7 +305,11 @@ class Conversa:
                 resultado = json.loads(resposta.read().decode("utf-8"))
 
             conteudo = resultado["message"]["content"]
-            return self.limpar_think(conteudo).strip()
+            conteudo = self.limpar_think(conteudo).strip()
+            if not conteudo:
+                raise RuntimeError("O Ollama retornou uma resposta vazia.")
+            self.verificar_dispositivo_ollama()
+            return conteudo
 
         except urllib.error.URLError as e:
             logging.error(f"Não foi possível conectar ao Ollama (Verifique se o serviço está rodando): {e}")
@@ -331,6 +343,8 @@ class Conversa:
                     if parte.get("done"):
                         break
 
+            self.verificar_dispositivo_ollama()
+
         except urllib.error.URLError as e:
             logging.error(f"Não foi possível conectar ao Ollama (Verifique se o serviço está rodando): {e}")
             raise
@@ -340,3 +354,44 @@ class Conversa:
         except Exception as e:
             logging.error(f"Erro ao consultar o modelo: {e}")
             raise
+
+    def verificar_dispositivo_ollama(self):
+        try:
+            with urllib.request.urlopen(self.URL_MODELOS_ATIVOS, timeout=3) as resposta:
+                dados = json.loads(resposta.read().decode("utf-8"))
+        except Exception as e:
+            logging.warning(f"Não consegui confirmar o uso da GPU pelo Ollama: {e}")
+            return
+
+        modelo = next(
+            (
+                item for item in dados.get("models", [])
+                if item.get("name") == self.MODEL or item.get("model") == self.MODEL
+            ),
+            None,
+        )
+        if modelo is None:
+            logging.warning(
+                "O Ollama não informou o dispositivo do modelo '%s'. "
+                "Confira com 'ollama ps'.",
+                self.MODEL,
+            )
+            return
+
+        size_vram = modelo.get("size_vram", 0)
+        dispositivo = "gpu" if size_vram else "cpu"
+        if dispositivo == self._dispositivo_ollama:
+            return
+
+        self._dispositivo_ollama = dispositivo
+        if size_vram:
+            logging.info(
+                "Ollama alocou %.2f GiB do modelo na GPU.",
+                size_vram / (1024 ** 3),
+            )
+        else:
+            logging.warning(
+                "Aviso: Ollama está executando '%s' na CPU, não na GPU. "
+                "A resposta continuará, mas pode ficar mais lenta; confira 'ollama ps'.",
+                self.MODEL,
+            )

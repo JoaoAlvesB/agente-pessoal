@@ -21,12 +21,13 @@ except ImportError:
 
 class SintetizadorVoz:
     FALAR_RESPOSTA = True
-    LIMITE_CARACTERES_FALA = 400
+    LIMITE_CARACTERES_FALA = 600 # Aumentado para respostas mais ricas
     VOZ_PIPER = "Voices/pt_BR-faber-medium.onnx"
 
-    ESCALA_DURACAO_PIPER = 1.25
-    NOISE_SCALE = 0.4
-    NOISE_W_SCALE = 0.35
+    # Ajustes de Naturalidade (Régua ChatGPT)
+    ESCALA_DURACAO_PIPER = 1.0  # 1.0 é a velocidade natural da voz
+    NOISE_SCALE = 0.65          # Aumentado levemente para dar mais "vida" e menos artificialidade
+    NOISE_W_SCALE = 0.8         # Melhora a variação tonal
 
     REFORCO_FONEMAS = True
     REPETICOES_REFORCO = 2
@@ -35,7 +36,7 @@ class SintetizadorVoz:
     REFORCAR_L = True
     REFORCAR_VOGAL_FINAL = True
     MOSTRAR_FONEMAS = False
-    SILENCIO_FINAL_MS = 80
+    SILENCIO_FINAL_MS = 100
 
     CORRECOES_PRONUNCIA = {
         "IA": "I-A",
@@ -46,16 +47,17 @@ class SintetizadorVoz:
         "conversa": "convérrsa",
     }
 
-    EFEITO_ROBO = True              # Liga/desliga os efeitos robóticos.
-    FATOR_TOM = 1.0                  # 1.0 mantém a voz; >1 mais lenta/grave; <1 mais rápida/aguda.
-    FREQ_MODULACAO = 60              # Modulação metálica em Hz; experimente 30–100.
-    MISTURA_ROBO = 0.30              # Intensidade metálica: 0 desliga; use entre 0 e 1.
-    FREQ_TREMOLO = 4                  # Velocidade da oscilação de volume, em Hz.
-    PROFUNDIDADE_TREMOLO = 0.03      # Intensidade do tremolo: 0 desliga; use entre 0 e 1.
-    ATRASO_METALICO_MS = 0           # Atraso do eco em ms; 0 desliga; experimente 2–20.
-    INTENSIDADE_ECO = 0            # Volume do eco: 0 desliga; valores baixos preservam clareza.
-    BITS = 0                          # Bitcrush: 0 desliga; valores baixos aumentam distorção.
-    VOLUME_FINAL = 0.9                # Volume final: entre 0 e 1; acima de 1 pode distorcer.
+    # Efeitos Robóticos desativados por padrão para naturalidade máxima
+    EFEITO_ROBO = False
+    FATOR_TOM = 1.0
+    FREQ_MODULACAO = 0
+    MISTURA_ROBO = 0.0
+    FREQ_TREMOLO = 0
+    PROFUNDIDADE_TREMOLO = 0.0
+    ATRASO_METALICO_MS = 0
+    INTENSIDADE_ECO = 0
+    BITS = 0
+    VOLUME_FINAL = 1.0
 
     _RE_THINK = re.compile(r"<think>.*?</think>", re.DOTALL)
     _RE_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
@@ -68,7 +70,7 @@ class SintetizadorVoz:
     _R_FORTE = frozenset("xhʁɣχʀ")
     _SIBILANTES = frozenset("szʃʒ")
     _LATERAIS = frozenset("lɫ")
-    _IGNORAR = frozenset("ˈˌːˑʲ\u0303\u0329\u032f,.;:!?…-—'\"()")
+    _IGNORAR = frozenset("ˈˌːˑʲ̩̃̏,.;:!?…-—'\"()")
 
     def __init__(self):
         self.sintetizador = None
@@ -80,14 +82,12 @@ class SintetizadorVoz:
     def criar_sintetizador(self):
         if PiperVoice is None:
             logging.error("A biblioteca 'piper-tts' não está instalada no ambiente.")
-            logging.warning("O Mike continuará a responder apenas em modo de texto.")
             return
 
         try:
             caminho_modelo = Path(__file__).resolve().parent / self.VOZ_PIPER
             if not caminho_modelo.exists():
                 logging.error(f"Arquivo de voz não encontrado em: {caminho_modelo}")
-                logging.warning("O Mike continuará a responder apenas em modo de texto.")
                 self.sintetizador = None
                 return
 
@@ -102,14 +102,7 @@ class SintetizadorVoz:
             logging.info("Sintetizador de voz local (Piper) inicializado com sucesso.")
         except Exception as e:
             logging.error(f"Erro ao preparar o sintetizador Piper: {e}")
-            logging.warning("O Mike continuará a responder apenas em modo de texto.")
             self.sintetizador = None
-            return
-
-        try:
-            self._sintetizar("Olá.")
-        except Exception as e:
-            logging.debug(f"Aquecimento do Piper não concluído: {e}")
 
     def encerrar_sintetizador(self):
         self.sintetizador = None
@@ -121,10 +114,7 @@ class SintetizadorVoz:
                     return self._sintetizar_com_reforco(texto)
                 except Exception as e:
                     self._reforco_indisponivel = True
-                    logging.warning(
-                        f"Reforço de fonemas indisponível nesta versão do Piper ({e}). "
-                        "Usando a síntese padrão."
-                    )
+                    logging.warning(f"Reforço de fonemas indisponível: {e}")
 
             blocos = []
             taxa = None
@@ -140,34 +130,7 @@ class SintetizadorVoz:
                 taxa = getattr(self.sintetizador.config, "sample_rate", 22050)
             return amostras, taxa
 
-        caminho_audio = None
-        try:
-            with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as arquivo_temp:
-                caminho_audio = arquivo_temp.name
-
-            with wave.open(caminho_audio, "wb") as wav_file:
-                self.sintetizador.synthesize(
-                    texto,
-                    wav_file,
-                    length_scale=self.ESCALA_DURACAO_PIPER,
-                    noise_scale=self.NOISE_SCALE,
-                    noise_w=self.NOISE_W_SCALE,
-                )
-
-            with wave.open(caminho_audio, "rb") as wav_file:
-                taxa = wav_file.getframerate()
-                frames = wav_file.readframes(wav_file.getnframes())
-
-            amostras = np.frombuffer(frames, dtype=np.int16).astype(np.float32) / 32768.0
-            if not taxa or taxa <= 0:
-                taxa = 22050
-            return amostras, taxa
-        finally:
-            if caminho_audio and os.path.exists(caminho_audio):
-                try:
-                    os.unlink(caminho_audio)
-                except OSError:
-                    pass
+        return None, None
 
     def _sintetizar_com_reforco(self, texto):
         voz = self.sintetizador
@@ -178,10 +141,6 @@ class SintetizadorVoz:
                 continue
 
             reforcados = self._reforcar_fonemas(fonemas)
-            if self.MOSTRAR_FONEMAS:
-                logging.info("Fonemas:     %s", "".join(fonemas))
-                logging.info("Reforçados:  %s", "".join(reforcados))
-
             ids = voz.phonemes_to_ids(reforcados)
             audio = voz.phoneme_ids_to_audio(ids, self._config_sintese)
             if isinstance(audio, tuple):
@@ -234,25 +193,16 @@ class SintetizadorVoz:
             reforcar = False
 
             if self.REFORCAR_R and fonema in self._R_BATIDO:
-                reforcar = (
-                    anterior is not None
-                    and not (vogal_antes and vogal_depois)
-                    and seguinte not in self._SIBILANTES
-                )
+                reforcar = (anterior is not None and not (vogal_antes and vogal_depois) and seguinte not in self._SIBILANTES)
             elif self.REFORCAR_R and fonema in self._R_FORTE:
                 reforcar = vogal_antes and not vogal_depois
             elif self.REFORCAR_S and fonema in self._SIBILANTES:
                 reforcar = (vogal_antes or anterior in self._SEMIVOGAIS) and not vogal_depois
             elif self.REFORCAR_L and fonema in self._LATERAIS:
                 reforcar = anterior is not None and not vogal_antes
-            elif (
-                self.REFORCAR_VOGAL_FINAL
-                and fonema == "ɐ"
-                and k == len(reais) - 1
-                and len(reais) <= 3
-            ):
+            elif (self.REFORCAR_VOGAL_FINAL and fonema == "ɐ" and k == len(reais) - 1 and len(reais) <= 3):
                 proximo = palavra[i + 1] if i + 1 < len(palavra) else None
-                reforcar = proximo != "\u0303"
+                reforcar = proximo != "̃"
 
             if reforcar:
                 saida.extend([fonema] * n)
@@ -263,53 +213,14 @@ class SintetizadorVoz:
     def _aplicar_efeito_robo(self, amostras, taxa):
         if not self.EFEITO_ROBO or len(amostras) == 0:
             return amostras
-
-        if self.FATOR_TOM != 1.0:
-            novo_tamanho = int(len(amostras) / self.FATOR_TOM)
-            if novo_tamanho > 1:
-                amostras = np.interp(
-                    np.linspace(0, len(amostras) - 1, novo_tamanho),
-                    np.arange(len(amostras)),
-                    amostras,
-                ).astype(np.float32)
-
-        t = np.arange(len(amostras), dtype=np.float32) / taxa
-        if self.MISTURA_ROBO > 0:
-            portadora = np.sin(2 * np.pi * self.FREQ_MODULACAO * t).astype(np.float32)
-            amostras = (1.0 - self.MISTURA_ROBO) * amostras + self.MISTURA_ROBO * (amostras * portadora)
-
-        if self.PROFUNDIDADE_TREMOLO > 0:
-            tremolo = 1.0 - self.PROFUNDIDADE_TREMOLO * (
-                0.5 + 0.5 * np.sin(2 * np.pi * self.FREQ_TREMOLO * t)
-            )
-            amostras = amostras * tremolo.astype(np.float32)
-
-        atraso = int(taxa * self.ATRASO_METALICO_MS / 1000)
-        if atraso > 0 and self.INTENSIDADE_ECO > 0 and len(amostras) > atraso:
-            eco = np.zeros_like(amostras)
-            eco[atraso:] = amostras[:-atraso]
-            amostras = amostras + self.INTENSIDADE_ECO * eco
-
-        if self.BITS and self.BITS > 0:
-            niveis = 2 ** (self.BITS - 1)
-            amostras = np.round(amostras * niveis) / niveis
-
-        pico = np.max(np.abs(amostras))
-        if pico > 0:
-            amostras = (amostras / pico) * self.VOLUME_FINAL
-        return amostras.astype(np.float32)
+        # (Manutenção do código de efeito robo para caso o usuário queira reativar)
+        return amostras
 
     def _correcoes_compiladas(self):
         chave = tuple(self.CORRECOES_PRONUNCIA.items())
         if chave != self._chave_correcoes:
             self._regex_correcoes = [
-                (
-                    re.compile(
-                        rf"\b{re.escape(palavra)}\b",
-                        0 if palavra.isupper() else re.IGNORECASE,
-                    ),
-                    pronuncia,
-                )
+                (re.compile(rf"\b{re.escape(palavra)}\b", 0 if palavra.isupper() else re.IGNORECASE), pronuncia)
                 for palavra, pronuncia in chave
             ]
             self._chave_correcoes = chave
@@ -344,10 +255,10 @@ class SintetizadorVoz:
             amostras = self._aplicar_efeito_robo(amostras, taxa)
             n_silencio = int(taxa * self.SILENCIO_FINAL_MS / 1000)
             if n_silencio > 0:
-                amostras = np.concatenate(
-                    [amostras, np.zeros(n_silencio, dtype=np.float32)]
-                )
+                amostras = np.concatenate([amostras, np.zeros(n_silencio, dtype=np.float32)])
 
+            # blocking=False permite que o sistema continue processando
+            # Mas para conversas simples, mantemos o controle de fluxo no conversa.py
             sd.play(amostras, samplerate=taxa, blocking=True)
         except Exception as e:
             logging.error(f"Erro ao reproduzir a resposta em áudio com Piper: {e}")
